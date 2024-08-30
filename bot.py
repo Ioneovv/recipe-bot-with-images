@@ -3,11 +3,12 @@ import logging
 import random
 import asyncio
 import os
+import requests
 from telegram import Bot, InputFile
 from telegram.error import TelegramError
 from telegram.ext import ApplicationBuilder
 from dotenv import load_dotenv
-import requests
+from git import Repo
 
 # Загрузите переменные окружения
 load_dotenv()
@@ -16,6 +17,8 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHANNEL_ID')
 IMAGE_API_URL = os.getenv('IMAGE_API_URL')
 IMAGE_API_KEY = os.getenv('IMAGE_API_KEY')
+RECIPES_REPO_URL = os.getenv('RECIPES_REPO_URL')
+RECIPES_FILE_PATH = os.getenv('RECIPES_FILE_PATH')
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
@@ -32,15 +35,24 @@ def generate_image(prompt):
         'height': 512,
         'samples': 1
     }
-    try:
-        response = requests.post(IMAGE_API_URL, headers=headers, json=data)
-        response.raise_for_status()  # Проверка на успешный статус код
+    response = requests.post(IMAGE_API_URL, headers=headers, json=data)
+    
+    if response.status_code == 200:
         result = response.json()
         image_url = result.get('output', [])[0]
         return image_url
-    except requests.RequestException as e:
-        logging.error(f"Ошибка при генерации изображения: {e}")
+    else:
+        logging.error(f"Ошибка при генерации изображения: {response.status_code}, {response.text}")
         return None
+
+# Загрузка рецептов из внешнего репозитория
+def load_recipes():
+    repo = Repo.clone_from(RECIPES_REPO_URL, '/tmp/recipes_repo')
+    file_path = f'/tmp/recipes_repo/{RECIPES_FILE_PATH}'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        recipes = json.load(file)
+        logging.info(f"Рецепты загружены: {len(recipes)} рецептов")
+        return recipes
 
 # Форматирование текста рецепта
 def format_recipe(recipe):
@@ -63,16 +75,16 @@ async def send_recipe_with_image(bot, chat_id, recipe):
     except TelegramError as e:
         logging.error(f"Ошибка при отправке сообщения: {e}")
 
-# Асинхронная функция для выполнения задач в заданное время
-async def periodic_task(bot, chat_id, recipes, interval_hours=8):
+async def periodic_task(bot, chat_id, interval_hours=8):
     while True:
         try:
+            recipes = load_recipes()
             if not recipes:
-                logging.info("Рецепты закончились. Перезагружаем список...")
-                recipes.extend(load_recipes())
+                logging.info("Рецепты не найдены.")
+                await asyncio.sleep(interval_hours * 3600)
+                continue
 
             recipe = random.choice(recipes)
-            recipes.remove(recipe)
             await send_recipe_with_image(bot, chat_id, recipe)
 
             logging.info(f"Следующее сообщение будет отправлено через {interval_hours} часов.")
@@ -85,10 +97,9 @@ async def main():
     while True:
         try:
             application = ApplicationBuilder().token(TOKEN).build()
-            recipes = load_recipes()
 
             logging.info("Запуск периодической задачи.")
-            task = asyncio.create_task(periodic_task(application.bot, CHAT_ID, recipes))
+            task = asyncio.create_task(periodic_task(application.bot, CHAT_ID))
 
             await application.start()
             await task

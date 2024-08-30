@@ -1,4 +1,4 @@
-name: Run Recipe Bot
+name: Generate and Send Image
 
 on:
   schedule:
@@ -30,3 +30,5 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           IMAGE_API_URL: ${{ secrets.IMAGE_API_URL }}
           IMAGE_API_KEY: ${{ secrets.IMAGE_API_KEY }}
+          RECIPES_REPO_URL: ${{ secrets.RECIPES_REPO_URL }}  # URL репозитория с рецептами
+          RECIPES_FILE_PATH: ${{ secrets.RECIPES_FILE_PATH }}  # Путь к файлу рецептов в репозитории

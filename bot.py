@@ -32,15 +32,22 @@ def generate_image(prompt):
         'height': 512,
         'samples': 1
     }
-    response = requests.post(IMAGE_API_URL, headers=headers, json=data)
-    
-    if response.status_code == 200:
+    try:
+        response = requests.post(IMAGE_API_URL, headers=headers, json=data)
+        response.raise_for_status()  # Проверка на успешный статус код
         result = response.json()
         image_url = result.get('output', [])[0]
         return image_url
-    else:
-        logging.error(f"Ошибка при генерации изображения: {response.status_code}, {response.text}")
+    except requests.RequestException as e:
+        logging.error(f"Ошибка при генерации изображения: {e}")
         return None
+
+# Форматирование текста рецепта
+def format_recipe(recipe):
+    formatted = recipe.get('title', 'Без названия') + '\n\n'
+    formatted += '\n'.join(f"{item['ingredient']} - {item['amount']}" for item in recipe.get('ingredients', [])) + '\n\n'
+    formatted += '\n'.join(recipe.get('instructions', []))
+    return formatted
 
 # Асинхронная отправка сообщения и изображения в канал
 async def send_recipe_with_image(bot, chat_id, recipe):
@@ -56,6 +63,7 @@ async def send_recipe_with_image(bot, chat_id, recipe):
     except TelegramError as e:
         logging.error(f"Ошибка при отправке сообщения: {e}")
 
+# Асинхронная функция для выполнения задач в заданное время
 async def periodic_task(bot, chat_id, recipes, interval_hours=8):
     while True:
         try:
